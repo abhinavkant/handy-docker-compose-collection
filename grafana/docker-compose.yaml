@@ -27,10 +27,21 @@ services:
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - pushgateway
     links:
       - alertmanager:alertmanager
     ports:
       - 9090:9090
+
+  pushgateway:
+    image: prom/pushgateway
+    command:
+      - '--web.listen-address=:9191'
+      - '--push.disable-consistency-check'
+      - '--persistence.interval=5m'
+    ports:
+      - 9191:9191
 
   grafana:
     container_name: grafana
