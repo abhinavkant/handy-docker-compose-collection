@@ -17,6 +17,7 @@ services:
     environment:
       - SPAN_STORAGE_TYPE=elasticsearch
       - no_proxy=localhost
+      - COLLECTOR_OTLP_ENABLED=true
     command:
       [
         "--es.server-urls=http://elasticsearch:9200",
@@ -26,6 +27,10 @@ services:
         "--es.index-prefix=opentracing",
         "--log-level=error",
       ]
+    deploy:
+      resources:
+        limits:
+          memory: 275M
     networks:
       - elastic-jaeger
 
