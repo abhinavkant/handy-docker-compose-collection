@@ -1,11 +1,16 @@
 version: '3'
-
 volumes:
   prometheus_data: {}
   grafana_data: {}
+  loki_data: {}
+  esdata:
+    driver: local
+
+networks:
+  elastic-jaeger:
+    driver: bridge
 
 services:
-
   alertmanager:
     container_name: alertmanager
     hostname: alertmanager
@@ -16,6 +21,8 @@ services:
       - '--config.file=/etc/alertmanager/alertmanager.conf'
     ports:
       - 9093:9093
+    networks:
+      - elastic-jaeger
 
   prometheus:
     container_name: prometheus
@@ -33,6 +40,8 @@ services:
       - alertmanager:alertmanager
     ports:
       - 9090:9090
+    networks:
+      - elastic-jaeger
 
   pushgateway:
     image: prom/pushgateway
@@ -42,6 +51,18 @@ services:
       - '--persistence.interval=5m'
     ports:
       - 9191:9191
+    networks:
+      - elastic-jaeger
+
+  loki:
+    image: grafana/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - elastic-jaeger
 
   grafana:
     container_name: grafana
@@ -53,3 +74,57 @@ services:
       - grafana_data:/var/lib/grafana
     ports:
       - 3000:3000
+    networks:
+      - elastic-jaeger
+
+  jaegertracing:
+    image: jaegertracing/all-in-one:1.42.0
+    ports:
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+      - "14250:14250"
+      - "14268:14268"
+      - "14269:14269"
+      - "9411:9411"
+    restart: on-failure
+    environment:
+      - SPAN_STORAGE_TYPE=elasticsearch
+      - no_proxy=localhost
+    command:
+      [
+        "--es.server-urls=http://elasticsearch:9200",
+        "--span-storage.type=elasticsearch",
+        "--es.num-shards=1",
+        "--es.num-replicas=0",
+        "--es.index-prefix=opentracing",
+        "--log-level=error",
+        "--collector.otlp.enabled=true"
+      ]
+    deploy:
+      resources:
+        limits:
+          memory: 275M
+    networks:
+      - elastic-jaeger
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.8.1
+    networks:
+      - elastic-jaeger
+    ports:
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9300:9300"
+    restart: on-failure
+    environment:
+      - cluster.name=jaeger-cluster
+      - discovery.type=single-node
+      - http.host=0.0.0.0
+      - transport.host=127.0.0.1
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
